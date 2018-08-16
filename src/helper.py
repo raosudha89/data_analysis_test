@@ -1,3 +1,5 @@
+from collections import defaultdict
+from collections import OrderedDict
 import nltk
 from nltk.corpus import stopwords
 import pdb
@@ -35,7 +37,7 @@ def combine_texts(headlines, stories, take_texts):
         contents[idx] = headlines[idx] + stories[idx] + take_texts[idx]
     return contents
 
-def get_freq_topics(topics, TOPIC_COUNT=100):
+def get_freq_topics(topics, TOPIC_COUNT=10):
     topic_dict = defaultdict(int)
     for idx in topics:
         topics[idx] = list(set(topics[idx]))
