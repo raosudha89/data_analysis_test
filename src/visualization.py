@@ -2,13 +2,14 @@ import matplotlib.pyplot as plt
 import pyLDAvis.gensim
 from wordcloud import WordCloud
 
-def visualize_topics(ldamodel, corpus, dictionary):
+def visualize_topics(ldamodel, corpus, dictionary, out_fname):
     lda_display = pyLDAvis.gensim.prepare(ldamodel, corpus, dictionary, sort_topics=False)
-    pyLDAvis.show(lda_display)
+    pyLDAvis.save_html(lda_display, out_fname+'.html')
     
-def word_cloud(text):
-    wordcloud = WordCloud().generate(text)
+# Reference: https://github.com/amueller/word_cloud    
+def word_cloud(text, fname):
+    wordcloud = WordCloud(max_font_size=40).generate(text)
     plt.imshow(wordcloud, interpolation='bilinear')
     plt.axis("off")
-    plt.show()
+    plt.savefig(fname, dpi=1200)
 

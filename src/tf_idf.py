@@ -1,19 +1,34 @@
 from collections import defaultdict
 from collections import OrderedDict
+import numpy as np
 import pdb
 import sklearn
 from sklearn.feature_extraction.text import TfidfVectorizer
 from visualization import *
 
-def tf_idf(token_dict, MAX_COUNT):
+# Reference: https://gist.github.com/StevenMaude/ea46edc315b0f94d03b9
+
+def tf_idf(news_contents, MAX_COUNT, topics=[], topic=None):
+    if topic:
+        contents = {}
+        for idx in news_contents:
+            if topic:
+                if topic not in topics[idx]:
+                    continue
+            contents[idx] = news_contents[idx].split()
+    else:
+        contents = news_contents
+        
     tfidf = TfidfVectorizer(lowercase=False)
-    tfs = tfidf.fit_transform(token_dict.values())
+    tfs = tfidf.fit_transform(contents.values())
     feature_names = tfidf.get_feature_names()
-    word_tfidf = defaultdict(int)
-    for i in range(len(token_dict)):
-        for j in tfs[i].nonzero()[1]:
-            word_tfidf[feature_names[j]] = max(word_tfidf[j], tfs[i, j])
-    word_tfidf = OrderedDict(sorted(word_tfidf.items(), key=lambda x: x[1], reverse=True))
-    high_tf_idf_words = word_tfidf.keys()[:MAX_COUNT]
-    print high_tf_idf_words
-    word_cloud(' '.join(high_tf_idf_words))
+    scores = zip(feature_names, np.asarray(tfs.sum(axis=0))[0])
+    sorted_scores = sorted(scores, key=lambda x: x[1], reverse=True)
+    print sorted_scores[:MAX_COUNT]
+    high_tf_idf_words = [w for w, v in sorted_scores[:MAX_COUNT]]
+    word_cloud(' '.join(high_tf_idf_words), fname='tf_idf_%d'%MAX_COUNT)
+    
+def tf_idf_per_topic(news_contents, MAX_COUNT, topics, freq_topics):
+    for topic in freq_topics:
+        print topic
+        tf_idf(news_contents, MAX_COUNT, topics, topic)

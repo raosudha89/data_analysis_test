@@ -11,21 +11,26 @@ import sys
 from tf_idf import *
 import time
 from topic_modeling import *
-import warnings
-warnings.filterwarnings("ignore", message="numpy.dtype size changed")
 
-def generate_interesting_phrases_per_topic(headlines, stories, take_texts, topics):
-    topic_dict = defaultdict(int)
-    for idx in topics:
-        topics[idx] = list(set(topics[idx]))
-        for t in topics[idx]:
-            topic_dict[t] += 1
-    topic_dict = OrderedDict(sorted(topic_dict.items(), key=lambda x: x[1], reverse=True))
-    freq_topics = topic_dict.keys()[2:102] # Top two topics (LEN & RETR) appear in all docs
-    for topic in freq_topics:
-        print topic
-        generate_interesting_bigram_phrases(headlines, stories, take_texts, topics, topic)
-        generate_interesting_trigram_phrases(headlines, stories, take_texts, topics, topic)        
+def update_data(row, headlines, stories, take_texts):
+    idx = row['UNIQUE_STORY_INDEX']
+    topics[idx] += row['TOPICS'].split()
+    if row['EVENT_TYPE'] == 'ALERT':
+        headlines[idx] = row['HEADLINE_ALERT_TEXT']
+        stories[idx] = row['ACCUMULATED_STORY_TEXT']
+        take_texts[idx] = row['TAKE_TEXT']
+    elif row['EVENT_TYPE'] == 'HEADLINE':
+        headlines[idx] = row['HEADLINE_ALERT_TEXT']
+        stories[idx] = row['ACCUMULATED_STORY_TEXT']
+        # row['TAKE_TEXT'] is always empty here
+    elif row['EVENT_TYPE'] == 'STORY_TAKE_OVERWRITE':
+        # row['HEADLINE_ALERT_TEXT'] can be empty when original headlines[idx] is not
+        # row['ACCUMULATED_STORY_TEXT'] is always empty here
+        take_texts[idx] = row['TAKE_TEXT']
+    elif row['EVENT_TYPE'] == 'STORY_TAKE_APPEND':
+        stories[idx] = row['ACCUMULATED_STORY_TEXT']
+        take_texts[idx] = row['TAKE_TEXT']
+    return headlines, stories, take_texts
         
 def main(args):
     if os.path.exists("headlines.p"):
@@ -41,7 +46,6 @@ def main(args):
         stories = defaultdict(str)
         take_texts = defaultdict(str)
         topics = defaultdict(list)
-        ct = 0
         start_time = time.time()
         print 'Reading data...'
         with open(args.data_csv_filename) as csvfile:
@@ -52,29 +56,7 @@ def main(args):
                     continue
                 if row['PRODUCTS'] == 'TEST': #Ignoring test messages
                     continue
-                idx = row['UNIQUE_STORY_INDEX']
-                
-                topics[idx] += row['TOPICS'].split()
-                
-                if row['EVENT_TYPE'] == 'ALERT':
-                    headlines[idx] = row['HEADLINE_ALERT_TEXT']
-                    stories[idx] = row['ACCUMULATED_STORY_TEXT']
-                    take_texts[idx] = row['TAKE_TEXT']
-                elif row['EVENT_TYPE'] == 'HEADLINE':
-                    headlines[idx] = row['HEADLINE_ALERT_TEXT']
-                    stories[idx] = row['ACCUMULATED_STORY_TEXT']
-                    # row['TAKE_TEXT'] is always empty here
-                elif row['EVENT_TYPE'] == 'STORY_TAKE_OVERWRITE':
-                    # row['HEADLINE_ALERT_TEXT'] can be empty when original headlines[idx] is not
-                    # row['ACCUMULATED_STORY_TEXT'] is always empty here
-                    take_texts[idx] = row['TAKE_TEXT']
-                elif row['EVENT_TYPE'] == 'STORY_TAKE_APPEND':
-                    stories[idx] = row['ACCUMULATED_STORY_TEXT']
-                    take_texts[idx] = row['TAKE_TEXT']
-    
-                ct += 1
-                if ct > 1000:
-                    break
+                headlines, stories, take_texts = update_data(row, headlines, stories, take_texts)
         
         print 'Done! Time taken: ', time.time() - start_time
         
@@ -87,8 +69,8 @@ def main(args):
         p.dump(stories, open("stories.p", 'wb'))
         p.dump(take_texts, open("take_texts.p", 'wb'))
         p.dump(topics, open("topics.p", 'wb'))
-        
-    return
+
+    freq_topics = get_freq_topics(topics, TOPIC_COUNT=10)
 
     if args.headlines_only:
         print 'Using only headlines!'
@@ -98,32 +80,45 @@ def main(args):
     
     if args.tf_idf:
         print 'Finding interesting words using TF-IDF'
-        tf_idf(news_contents, MAX_COUNT=100)
+        start_time = time.time()
+        tf_idf(news_contents, MAX_COUNT=args.tf_idf_max_count)
+        print 'Done! Time taken ', time.time() - start_time
+    
+    if args.tf_idf_per_topic:
+        print 'Finding interesting words per topic using TF-IDF'
+        start_time = time.time()
+        tf_idf(news_contents, MAX_COUNT=args.tf_idf_max_count)
+        print 'Done! Time taken ', time.time() - start_time
     
     if args.collocations:
+        start_time = time.time()
         print 'Finding interesting bigram phrases using collocations'
         bigram_collocations(news_contents, MAX_COUNT=100)
+        print 'Done! Time taken ', time.time() - start_time
+        print
+        start_time = time.time()
         print 'Finding interesting trigram phrases using collocations'
         trigram_collocations(news_contents, MAX_COUNT=100)
+        print 'Done! Time taken ', time.time() - start_time
+        print
         
     if args.topic_modeling:
-        print 'Finding interesting words using topic modeling'
-        generate_interesting_words(news_contents)
-        print 'Finding interesting bigram phrases using topic modeling'
-        generate_interesting_bigram_phrases(news_contents)
-        print 'Finding interesting trigram phrases using topic modeling'
-        generate_interesting_trigram_phrases(news_contents)
-
-        #generate_interesting_phrases_per_topic(news_contents, topics)
+        topic_modeling(news_contents)
+    
+    if args.topic_modeling_per_topic:
+        topic_modeling_per_topic(news_contents, topics)
 
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(sys.argv[0])
+    argparser.add_argument("--collocations", type = bool)
     argparser.add_argument("--data_csv_filename", type = str)
     argparser.add_argument("--headlines_only", type = bool)
     argparser.add_argument("--tf_idf", type = bool)
-    argparser.add_argument("--collocations", type = bool)
+    argparser.add_argument("--tf_idf_max_count", type = int, default=100)
+    argparser.add_argument("--tf_idf_per_topic", type = bool)
     argparser.add_argument("--topic_modeling", type = bool)
+    argparser.add_argument("--topic_modeling_per_topic", type = bool)
     args = argparser.parse_args()
     print args
     print ""
